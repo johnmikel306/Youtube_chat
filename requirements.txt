@@ -1,5 +1,6 @@
 llama-index-readers-web
-beyondllm youtube_transcript_api
+beyondllm
+youtube_transcript_api
 llama-index-readers-youtube-transcript
 llama-index-embeddings-huggingface
 llama_index.vector_stores.chroma
