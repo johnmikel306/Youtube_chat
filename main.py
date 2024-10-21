@@ -9,17 +9,26 @@ import streamlit as st
 import os
 
 # Initialize Streamlit app
-st.title("YouTube QA-Bot")
+st.title("YouTube Data Processor and Question Answering")
+
+# Initialize memory
+memory = ChatBufferMemory(window_size=3)  # Retains the last three interactions
+
+# Cache to store processed data
+@st.cache_data
+def process_youtube_data(youtube_urls):
+    data = fit(path=youtube_urls, dtype="youtube")
+    embed_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    retriever = auto_retriever(data=data, embed_model=embed_model, type="normal", top_k=5)
+    return retriever
 
 # Upload YouTube URLs
 youtube_urls = st.text_area("Enter YouTube URLs (comma-separated):")
 
 if st.button("Process YouTube Data"):
     if youtube_urls:
-        data = fit(path=youtube_urls.split(','), dtype="youtube")
-        embed_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-        text_embeddings = embed_model.embed_text("Huggingface models are awesome!")
-        retriever = auto_retriever(data=data, embed_model=embed_model, type="normal", top_k=5)
+        youtube_url_list = youtube_urls.split(',')
+        retriever = process_youtube_data(youtube_url_list)
         st.success("YouTube data processed successfully.")
     else:
         st.error("Please enter valid YouTube URLs.")
@@ -37,10 +46,14 @@ if st.button("Get Answer"):
         
         response = pipeline.call()
         st.write("Response:", response)
+
+        # Store conversation in memory
+        memory.add_message({"user": user_prompt, "assistant": response})
+        
+        # Stream previous conversations
+        st.write("Previous Conversations:")
+        for message in memory.get_messages():
+            st.write(f"User: {message['user']}")
+            st.write(f"Assistant: {message['assistant']}")
     else:
         st.error("Please enter a question.")
-
-# Memory management
-if st.button("Initialize Memory"):
-    memory = ChatBufferMemory(window_size=3)  # Retains the last three interactions
-    st.success("Memory initialized.")
