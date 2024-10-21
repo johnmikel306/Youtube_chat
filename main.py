@@ -15,24 +15,23 @@ def main():
     # Initialize memory
     memory = ChatBufferMemory(window_size=3)  # Retains the last three interactions
 
-    # Cache to store processed data
-    @st.cache_data
-    def process_youtube_data(youtube_urls):
-        data = fit(path=youtube_urls, dtype="youtube")
-        embed_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-        retriever = auto_retriever(data=data, embed_model=embed_model, type="normal", top_k=5)
-        return retriever
-
-    # Upload YouTube URLs
-    youtube_urls = st.text_area("Enter YouTube URLs (comma-separated):")
+    # Upload YouTube URL
+    youtube_url = st.text_input("Enter YouTube URL:")
 
     if st.button("Process YouTube Data"):
-        if youtube_urls:
-            youtube_url_list = youtube_urls.split(',')
-            retriever = process_youtube_data(youtube_url_list)
+        if youtube_url:
+            data = fit(path=youtube_url, dtype="youtube")
             st.success("YouTube data processed successfully.")
+
+            # Embedding
+            embed_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+            text_embeddings = embed_model.embed_text("Huggingface models are awesome!")
+
+            # Auto Retriever
+            retriever = auto_retriever(data=data, embed_model=embed_model, type="normal", top_k=5)
+            st.session_state.retriever = retriever  # Store retriever in session state
         else:
-            st.error("Please enter valid YouTube URLs.")
+            st.error("Please enter a valid YouTube URL.")
 
     # Ask a question
     user_prompt = st.text_input("Ask a question about the processed data:")
@@ -43,8 +42,8 @@ def main():
             llm = GroqModel(model="llama3-8b-8192")
             
             system_prompt = "You are an AI assistant...."
-            pipeline = generator.Generate(question=user_prompt, system_prompt=system_prompt, llm=llm, retriever=retriever)
-            
+            pipeline = generator.Generate(question=user_prompt, system_prompt=system_prompt, llm=llm, retriever=st.session_state.retriever)
+
             response = pipeline.call()
             st.write("Response:", response)
 
