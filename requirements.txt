@@ -6,3 +6,4 @@ llama-index-embeddings-huggingface
 llama_index.vector_stores.chroma
 groq
 streamlit
+nltk
