@@ -1,3 +1,4 @@
+import streamlit as st
 from beyondllm.source import fit
 from beyondllm.embeddings import HuggingFaceEmbeddings
 from beyondllm.retrieve import auto_retriever
@@ -5,62 +6,55 @@ from beyondllm.vectordb import ChromaVectorDb
 from beyondllm.llms import GroqModel
 from beyondllm import generator, retrieve
 from beyondllm.memory import ChatBufferMemory
-import streamlit as st
 import os
 
+def load_youtube_data(url):
+    return fit(path=url, dtype="youtube")
+
+def create_embeddings(model_name, text):
+    embed_model = HuggingFaceEmbeddings(model_name=model_name)
+    return embed_model.embed_text(text)
+
+def setup_retriever(data, embed_model, top_k):
+    return auto_retriever(data=data, embed_model=embed_model, type="normal", top_k=top_k)
+
+def initialize_llm(api_key, model_name):
+    os.environ['GROQ_API_KEY'] = api_key
+    return GroqModel(model=model_name)
+
+def generate_response(user_prompt, system_prompt, llm, retriever):
+    pipeline = generator.Generate(question=user_prompt, system_prompt=system_prompt, llm=llm, retriever=retriever)
+    return pipeline.call()
+
 def main():
-    # Initialize Streamlit app
-    st.title("YouTube Data Processor and Question Answering")
+    st.title("YouTube Video Analysis with LLM")
 
-    # Initialize memory
-    memory = ChatBufferMemory(window_size=3)  # Retains the last three interactions
+    # Load YouTube data
+    youtube_urls = st.text_input("Enter the YouTube URL:")
+    if youtube_urls:
+        data = load_youtube_data(youtube_urls)
 
-    # Upload YouTube URL
-    youtube_url = st.text_input("Enter YouTube URL:")
+        # Embedding
+        text_embeddings = create_embeddings("sentence-transformers/all-MiniLM-L6-v2", "Huggingface models are awesome!")
 
-    if st.button("Process YouTube Data"):
-        if youtube_url:
-            data = fit(path=youtube_url, dtype="youtube")
-            st.success("YouTube data processed successfully.")
+        # Auto Retriever
+        retriever = setup_retriever(data, text_embeddings, top_k=5)
+        retrieved_nodes = retriever.retrieve("What is this video about?")
 
-            # Embedding
-            embed_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-            text_embeddings = embed_model.embed_text("Huggingface models are awesome!")
+        # Initialize LLM with API key
+        api_key = st.text_input("Enter your GROQ API Key:", type="password")
+        if api_key:
+            llm = initialize_llm(api_key, "llama3-8b-8192")
 
-            # Auto Retriever
-            retriever = auto_retriever(data=data, embed_model=embed_model, type="normal", top_k=5)
-            st.session_state.retriever = retriever  # Store retriever in session state
-        else:
-            st.error("Please enter a valid YouTube URL.")
-
-    # Ask a question
-    user_prompt = st.text_input("Ask a question about the processed data:")
-
-    if st.button("Get Answer"):
-        if user_prompt:
-            os.environ['GROQ_API_KEY'] = st.secrets["GROQ_API_KEY"]
-            llm = GroqModel(model="llama3-8b-8192")
-            
+            # Generator
+            user_prompt = st.text_input("Enter your question:")
             system_prompt = "You are an AI assistant...."
-            pipeline = generator.Generate(question=user_prompt, system_prompt=system_prompt, llm=llm, retriever=st.session_state.retriever)
+            if user_prompt:
+                response = generate_response(user_prompt, system_prompt, llm, retriever)
+                st.write(response)
 
-            response = pipeline.call()
-            st.write("Response:", response)
-
-            # Store conversation in memory
-            memory.add_message({"user": user_prompt, "assistant": response})
-            
-            # Stream previous conversations
-            st.write("Previous Conversations:")
-            for message in memory.get_messages():
-                st.write(f"User: {message['user']}")
-                st.write(f"Assistant: {message['assistant']}")
-        else:
-            st.error("Please enter a question.")
-
-    # Ensure Streamlit can access the secret API key
-    if 'GROQ_API_KEY' not in st.secrets:
-        st.error("GROQ_API_KEY not found in Streamlit secrets.")
+            # Memory
+            memory = ChatBufferMemory(window_size=3)  # Retains the last three interactions
 
 if __name__ == "__main__":
     main()
