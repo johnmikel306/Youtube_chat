@@ -25,6 +25,7 @@ def initialize_llm(api_key, model_name):
 def generate_response(user_prompt, system_prompt, llm, retriever):
     pipeline = generator.Generate(question=user_prompt, system_prompt=system_prompt, llm=llm, retriever=retriever)
     return pipeline.call()
+  
 
 def main():
     st.title("YouTube Video Analysis with LLM")
