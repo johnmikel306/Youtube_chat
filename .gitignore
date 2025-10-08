@@ -130,6 +130,14 @@ ENV/
 env.bak/
 venv.bak/
 
+# Project-specific
+data/
+*.faiss
+*.pkl
+.streamlit/secrets.toml
+docs/
+tests/
+
 # Spyder project settings
 .spyderproject
 .spyproject

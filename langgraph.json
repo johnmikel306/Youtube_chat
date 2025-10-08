@@ -1,0 +1,8 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "youtube_qa_agent": "./studio_graph.py:graph"
+  },
+  "env": ".env"
+}
+
