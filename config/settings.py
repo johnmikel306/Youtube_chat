@@ -2,7 +2,8 @@ import os
 from pathlib import Path
 
 # Model Configuration
-GROQ_MODEL_NAME = "openai/gpt-oss-20b"  # GPT-OSS 20B model from Groq
+# Using Llama 3.1 70B which has excellent tool calling capabilities
+GROQ_MODEL_NAME = "llama-3.3-70b-versatile"  
 EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
 # LLM Parameters

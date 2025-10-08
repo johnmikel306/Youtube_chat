@@ -13,20 +13,40 @@ class AgentState(TypedDict):
 class Agent:
     def __init__(self, llm, retriever):
         self.tool = self._create_tool(retriever)
+        # Bind tools to LLM - this enables tool calling
         self.llm = llm.bind_tools([self.tool])
+        # Also create a version that forces tool use on first call
+        self.llm_force_tool = llm.bind_tools([self.tool], tool_choice="search_video")
         self.llm_base = llm
         self.graph = self._build_graph()
 
     def _create_tool(self, retriever):
         def search(query: str) -> str:
-            """Search the YouTube video transcript for relevant information."""
+            """Search the YouTube video transcript for relevant information.
+
+            This tool retrieves relevant excerpts from the video transcript based on the query.
+            ALWAYS use this tool before answering questions about the video.
+
+            Args:
+                query: The question or topic to search for in the video transcript
+
+            Returns:
+                Relevant transcript excerpts that contain information about the query
+            """
             # Use invoke instead of deprecated get_relevant_documents
             docs = retriever.invoke(query)
+            if not docs:
+                return "No relevant information found in the video transcript."
             return "\n\n".join([d.page_content for d in docs])
 
         return Tool(
             name="search_video",
-            description="Search the YouTube video transcript for information to answer questions about the video content",
+            description=(
+                "REQUIRED TOOL: Search the YouTube video transcript to find relevant information. "
+                "You MUST use this tool for EVERY question about the video content. "
+                "Input should be the user's question or key topics to search for. "
+                "Returns relevant excerpts from the video transcript."
+            ),
             func=search
         )
 
@@ -35,10 +55,19 @@ class Agent:
 
         def call_model(state):
             messages = [HumanMessage(content=SYSTEM_PROMPT)] + state["messages"]
-            response = self.llm.invoke(messages)
+
+            # Force tool use on first iteration to ensure we always search the video
+            iterations = state.get("iterations", 0)
+            if iterations == 0:
+                # First call - force the agent to use the search_video tool
+                response = self.llm_force_tool.invoke(messages)
+            else:
+                # Subsequent calls - let agent decide
+                response = self.llm.invoke(messages)
+
             return {
                 "messages": [response],
-                "iterations": state.get("iterations", 0) + 1
+                "iterations": iterations + 1
             }
 
         def should_continue(state):
