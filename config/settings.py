@@ -1,5 +1,9 @@
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Model Configuration
 # Using Llama 3.1 70B which has excellent tool calling capabilities

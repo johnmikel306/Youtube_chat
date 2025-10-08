@@ -17,6 +17,10 @@ To use in LangGraph Studio:
 Note: You need to set GROQ_API_KEY in your .env file for this to work.
 """
 
+# Load environment variables FIRST before any other imports
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 from typing import TypedDict, Annotated, List
 import operator
@@ -26,7 +30,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langchain_groq import ChatGroq
 
-# Import configuration
+# Import configuration (after load_dotenv)
 from config.settings import GROQ_MODEL_NAME, SYSTEM_PROMPT, MAX_ITERATIONS, DEFAULT_TEMPERATURE, get_api_key
 
 # ============================================================================
@@ -129,13 +133,13 @@ def create_search_tool():
         # Check if video is loaded
         if _retriever is None:
             return "Error: No video loaded. Please load a video first using load_video_for_studio(url)"
-        
-        # Perform semantic search
-        docs = _retriever.get_relevant_documents(query)
-        
+
+        # Perform semantic search using invoke (not deprecated get_relevant_documents)
+        docs = _retriever.invoke(query)
+
         # Combine results into a single string
         result = "\n\n".join([doc.page_content for doc in docs])
-        
+
         return result if result else "No relevant information found in the video."
     
     # Create the Tool object that LangChain/LangGraph can use
@@ -325,17 +329,34 @@ def test_graph(video_url: str, question: str, temperature: float = DEFAULT_TEMPE
 if __name__ == "__main__":
     """
     Run this file directly to test the graph from command line.
-    
+
     Usage:
         python studio_graph.py
     """
+    # Ensure .env is loaded (redundant but safe)
+    load_dotenv()
+
+    # Set UTF-8 encoding for Windows console
+    if os.name == 'nt':  # Windows
+        import sys
+        if hasattr(sys.stdout, 'reconfigure'):
+            sys.stdout.reconfigure(encoding='utf-8')
+
     print("🎥 YouTube Q&A Agent - LangGraph Studio Version\n")
-    
+
     # Check for API key
-    if not get_api_key():
+    api_key = get_api_key()
+    if not api_key:
         print("❌ Error: GROQ_API_KEY not set")
         print("Please set it in your .env file or environment variables")
+        print(f"\nDebug info:")
+        print(f"  - Current directory: {os.getcwd()}")
+        print(f"  - .env file exists: {os.path.exists('.env')}")
+        if os.path.exists('.env'):
+            print(f"  - .env file location: {os.path.abspath('.env')}")
         exit(1)
+
+    print(f"✅ API key loaded successfully (length: {len(api_key)} chars)\n")
     
     # Get video URL
     video_url = input("Enter YouTube URL: ").strip()
@@ -412,4 +433,5 @@ if __name__ == "__main__":
             
         except Exception as e:
             print(f"\n❌ Error: {e}\n")
+
 

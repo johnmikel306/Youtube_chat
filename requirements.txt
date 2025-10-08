@@ -7,4 +7,4 @@ langgraph
 langchain-groq
 faiss-cpu
 sentence-transformers
-youtube-transcript-api
+yt-dlp
