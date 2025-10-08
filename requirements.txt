@@ -8,3 +8,4 @@ langchain-groq
 faiss-cpu
 sentence-transformers
 yt-dlp
+langgraph-cli[inmem]

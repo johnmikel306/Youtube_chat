@@ -63,6 +63,7 @@ class AgentState(TypedDict):
 # In a production system, you might use a database or cache instead
 _vector_store = None
 _retriever = None
+_search_tool = None  # Global tool instance to ensure consistency
 
 
 # ============================================================================
@@ -108,46 +109,104 @@ def load_video_for_studio(video_url: str):
 # ============================================================================
 # TOOL DEFINITION: SEARCH VIDEO TRANSCRIPT
 # ============================================================================
-def create_search_tool():
+def search_video_transcript(query: str) -> str:
     """
-    Create the search tool that the agent can use to find information in the video.
-    
-    The tool performs semantic search over the video transcript chunks and returns
-    the most relevant passages based on the query.
-    
+    Search the video transcript for relevant information.
+
+    Args:
+        query: The search query (what to look for in the video)
+
+    Returns:
+        str: Concatenated relevant transcript chunks
+    """
+    global _retriever
+
+    # Check if video is loaded
+    if _retriever is None:
+        return "Error: No video loaded. Please load a video first using load_video_for_studio(url)"
+
+    # Perform semantic search using invoke (not deprecated get_relevant_documents)
+    docs = _retriever.invoke(query)
+
+    # Combine results into a single string
+    result = "\n\n".join([doc.page_content for doc in docs])
+
+    return result if result else "No relevant information found in the video."
+
+
+def get_search_tool():
+    """
+    Get the global search tool instance.
+
+    This ensures the same tool instance is used throughout the graph,
+    preventing tool validation errors.
+
     Returns:
         Tool: LangChain Tool object that the agent can call
     """
-    def search_video_transcript(query: str) -> str:
-        """
-        Search the video transcript for relevant information.
-        
-        Args:
-            query: The search query (what to look for in the video)
-        
-        Returns:
-            str: Concatenated relevant transcript chunks
-        """
-        global _retriever
-        
-        # Check if video is loaded
-        if _retriever is None:
-            return "Error: No video loaded. Please load a video first using load_video_for_studio(url)"
+    global _search_tool
 
-        # Perform semantic search using invoke (not deprecated get_relevant_documents)
-        docs = _retriever.invoke(query)
+    # Create tool only once
+    if _search_tool is None:
+        _search_tool = Tool(
+            name="search_video",
+            description="Search the YouTube video transcript for relevant information. Use this to find specific content from the video.",
+            func=search_video_transcript
+        )
 
-        # Combine results into a single string
-        result = "\n\n".join([doc.page_content for doc in docs])
+    return _search_tool
 
-        return result if result else "No relevant information found in the video."
-    
-    # Create the Tool object that LangChain/LangGraph can use
-    return Tool(
-        name="search_video",
-        description="Search the YouTube video transcript for relevant information. Use this to find specific content from the video.",
-        func=search_video_transcript
-    )
+
+# ============================================================================
+# GRAPH NODE: LOAD VIDEO (IF NOT LOADED)
+# ============================================================================
+def load_video_node(state: AgentState) -> dict:
+    """
+    Load the video if it hasn't been loaded yet.
+
+    This node checks if the video is loaded and loads it if necessary.
+    It runs before the agent starts processing questions.
+
+    Args:
+        state: Current agent state
+
+    Returns:
+        dict: Updated state with video_loaded flag
+    """
+    global _vector_store, _retriever
+
+    # Check if video is already loaded
+    if state.get("video_loaded", False) and _retriever is not None:
+        return {"video_loaded": True}
+
+    # Load the video
+    video_url = state.get("video_url", "")
+    if not video_url:
+        raise ValueError("No video URL provided in state")
+
+    try:
+        # Import here to avoid circular dependencies
+        from src.youtube_loader import YouTubeLoader
+        from src.vector_store import VectorStore
+
+        # Load YouTube transcript
+        print(f"📥 Loading video: {video_url}")
+        loader = YouTubeLoader()
+        docs = loader.load(video_url)
+        print(f"✅ Loaded {len(docs)} document chunks")
+
+        # Create vector store for semantic search
+        _vector_store = VectorStore()
+        _vector_store.create(docs)
+        _retriever = _vector_store.as_retriever()
+
+        print("✅ Video loaded successfully!")
+        return {"video_loaded": True}
+
+    except Exception as e:
+        error_msg = f"❌ Error loading video: {e}"
+        print(error_msg)
+        raise Exception(error_msg)
 
 
 # ============================================================================
@@ -181,7 +240,7 @@ def call_model(state: AgentState) -> dict:
     llm = ChatGroq(model=GROQ_MODEL_NAME, temperature=temperature, api_key=api_key)
 
     # Bind the search tool to the LLM so it can call it
-    llm_with_tools = llm.bind_tools([create_search_tool()])
+    llm_with_tools = llm.bind_tools([get_search_tool()])
 
     # Prepare messages: system prompt + conversation history
     messages = [HumanMessage(content=SYSTEM_PROMPT)] + state["messages"]
@@ -241,15 +300,15 @@ def should_continue(state: AgentState) -> str:
 def build_graph():
     """
     Build the LangGraph ReAct agent graph.
-    
+
     Graph structure:
-        START → agent → [decision] → tools → agent → ... → END
-                           ↓
-                          END
-    
-    The agent alternates between reasoning (agent node) and acting (tools node)
-    until it has a final answer.
-    
+        START → load_video → agent → [decision] → tools → agent → ... → END
+                                         ↓
+                                        END
+
+    The graph first loads the video (if not loaded), then the agent alternates
+    between reasoning (agent node) and acting (tools node) until it has a final answer.
+
     Returns:
         CompiledGraph: The compiled graph ready for execution
     """
@@ -257,15 +316,20 @@ def build_graph():
     workflow = StateGraph(AgentState)
 
     # Create tool node using ToolNode (handles tool execution automatically)
-    tool_node = ToolNode([create_search_tool()])
+    # Use the same tool instance that's bound to the LLM
+    tool_node = ToolNode([get_search_tool()])
 
     # Add nodes
-    workflow.add_node("agent", call_model)    # Reasoning node
-    workflow.add_node("tools", tool_node)     # Acting node (using ToolNode)
-    
-    # Set entry point
-    workflow.set_entry_point("agent")
-    
+    workflow.add_node("load_video", load_video_node)  # Video loading node
+    workflow.add_node("agent", call_model)            # Reasoning node
+    workflow.add_node("tools", tool_node)             # Acting node (using ToolNode)
+
+    # Set entry point - start by loading video
+    workflow.set_entry_point("load_video")
+
+    # After loading video, go to agent
+    workflow.add_edge("load_video", "agent")
+
     # Add conditional routing from agent
     workflow.add_conditional_edges(
         "agent",           # From the agent node
@@ -275,10 +339,10 @@ def build_graph():
             "end": END            # If end, finish
         }
     )
-    
+
     # Add edge from tools back to agent (ReAct loop)
     workflow.add_edge("tools", "agent")
-    
+
     # Compile the graph
     return workflow.compile()
 
@@ -433,5 +497,6 @@ if __name__ == "__main__":
             
         except Exception as e:
             print(f"\n❌ Error: {e}\n")
+
 
 

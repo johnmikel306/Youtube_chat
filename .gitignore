@@ -135,6 +135,7 @@ data/
 *.faiss
 *.pkl
 .streamlit/secrets.toml
+.langgraph_api
 docs/
 tests/
 
