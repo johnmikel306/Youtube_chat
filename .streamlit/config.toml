@@ -1,0 +1,24 @@
+# Streamlit configuration for ChatGPT-like theme
+
+[theme]
+# ChatGPT-inspired color scheme
+primaryColor = "#10a37f"  # ChatGPT green
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f7f7f8"
+textColor = "#202123"
+font = "sans serif"
+
+[server]
+# Enable file watcher for development
+fileWatcherType = "auto"
+enableCORS = false
+enableXsrfProtection = true
+
+[browser]
+# Gather usage stats
+gatherUsageStats = false
+
+[client]
+# Show error details
+showErrorDetails = true
+

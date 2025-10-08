@@ -1,7 +1,7 @@
 from typing import List
 from langchain.docstore.document import Document
 from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from config.settings import EMBEDDING_MODEL_NAME, TOP_K
 
 class VectorStore:
