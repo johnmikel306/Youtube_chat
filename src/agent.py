@@ -19,12 +19,14 @@ class Agent:
 
     def _create_tool(self, retriever):
         def search(query: str) -> str:
-            docs = retriever.get_relevant_documents(query)
+            """Search the YouTube video transcript for relevant information."""
+            # Use invoke instead of deprecated get_relevant_documents
+            docs = retriever.invoke(query)
             return "\n\n".join([d.page_content for d in docs])
 
         return Tool(
             name="search_video",
-            description="Search the YouTube video transcript",
+            description="Search the YouTube video transcript for information to answer questions about the video content",
             func=search
         )
 
